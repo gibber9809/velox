@@ -62,6 +62,27 @@ void ClpArchiveVectorLoader::populateData(RowSet rows, VectorPtr vector) {
   }
 }
 
+void ClpArchiveVectorLoader::populateTimestampDataAsInteger(
+    RowSet rows,
+    FlatVector<int64_t>* vector) {
+  auto timestampReader =
+      dynamic_cast<clp_s::TimestampColumnReader*>(columnReader_);
+  if (timestampReader == nullptr) {
+    for (int vectorIndex : rows) {
+      vector->setNull(vectorIndex, true)
+    }
+  }
+
+  for (int vectorIndex : rows) {
+    auto messageIndex = filteredRowIndices_->at(vectorIndex);
+    vector->set(
+        vectorIndex,
+        timestampReader->get_encoded_time(messageIndex) /
+            Timestamp::kNanosecondsInMillisecond);
+    vector->setNull(vectorIndex, false);
+  }
+}
+
 template <clp_s::NodeType Type>
 void ClpArchiveVectorLoader::populateTimestampData(
     RowSet rows,
@@ -141,7 +162,12 @@ void ClpArchiveVectorLoader::loadInternal(
   switch (nodeType_) {
     case ColumnType::Integer: {
       auto intVector = vector->asFlatVector<int64_t>();
-      populateData<int64_t>(rows, intVector);
+      if (nullptr !=
+          dynamic_cast<clp_s::TimestampColumnReader*>(columnReader_)) {
+        populateTimestampDataAsInteger(rows, intVector);
+      } else {
+        populateData<int64_t>(rows, intVector);
+      }
       break;
     }
     case ColumnType::Float: {
